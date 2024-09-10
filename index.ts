@@ -79,8 +79,9 @@ line_client.on("square:message", (message) => {
         await send(`https://stickershop.line-scdn.net/stickershop/v1/sticker/${stampMetadata}/android/${message.contentMetadata["STKOPT"] === "A" ? "sticker_animation.png" : "sticker.png"}`)
       }else if ((message.contentType === "IMAGE" || message.contentType === "VIDEO" || message.contentType === "FILE") && message.data) {
         const obsData = await line_client.getMessageObsData(message.squareMessage.message.id);
+        const filename = message.contentMetadata["FILE_NAME"] || `image.${JSON.parse(message.contentMetadata["MEDIA_CONTENT_INFO"])["extension"] || "png"}`
 
-        const response = await fetch("https://storage.evex.land/upload?filename=" + encodeURIComponent(message.contentMetadata["FILE_NAME"] || `image.${JSON.parse(message.contentMetadata["MEDIA_CONTENT_INFO"])["extension"] || "png"}`), {
+        const response = await fetch("https://storage.evex.land/upload?filename=" + encodeURIComponent(filename), {
           method: "POST",
           body: obsData,
         })
@@ -89,7 +90,8 @@ line_client.on("square:message", (message) => {
           const obsDataUrl = (await response.json()).downloadKey;
 
           if (obsDataUrl) {
-            await send(`https://storage.evex.land/download?key=${encodeURIComponent(obsDataUrl)}`);
+            await send(`[FILE] \`${encodeURIComponent(filename)}\`
+https://storage.evex.land/download?key=${encodeURIComponent(obsDataUrl)}`);
           }
         }
       }else if (message.content !== "") {
