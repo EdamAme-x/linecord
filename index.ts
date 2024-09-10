@@ -15,20 +15,17 @@ import { Client as LINEClient } from "@evex/linejs";
 import { FileStorage } from "@evex/linejs/storage";
 import { ChannelType, Client as DiscordClient } from "@djs/client";
 import { RateLimitter } from "@evex/linejs/rate-limit";
-import { LINE_OBS } from "@evex/linejs/utils";
 
 const line_client = new LINEClient({
   storage: new FileStorage("./storage.json"),
   squareRateLimitter: new RateLimitter(4, 2000)
 });
 
-const line_obs = new LINE_OBS();
-
 const line_target = {
   squareChatMid: "m45c50782d24820a6288b24f7a07365cc",
 };
 
-let discord_webhook: string | undefined;
+let discord_webhook: string | undefined = line_client.storage.get("discord_webhook") as string | undefined;
 
 line_client.on("ready", (user) => {
   console.log("[LINE] Ready: ", `As ${user.displayName} (${user.mid})`);
@@ -47,52 +44,56 @@ line_client.on("square:message", (message) => {
     return;
   }
 
-  const stampMetadata = "STKVER" in message.contentMetadata ? message.contentMetadata["STKID"] : undefined;
+  const stampMetadata = (message.contentMetadata && message.contentMetadata["STKVER"]) ? message.contentMetadata["STKID"] : undefined;
 
   if (!discord_client.isReady || !discord_webhook) {
     return;
   }
 
-  discord_client.channels.fetch(discord_target.channelId).then((channel) => {
+  discord_client.channels.fetch(discord_target.channelId).then(async (channel) => {
     if (!channel) {
       return;
     }
 
     if (channel.type === ChannelType.GuildText) {
-      const send = (text: string) => {
+      const send = async (text: string) => {
         if (!discord_webhook) {
           return;
         }
 
-        fetch(discord_webhook, {
+        await fetch(discord_webhook, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
           },
           body: JSON.stringify({
             content: text,
-            name: message.author.displayName,
-            avatar: message.author.iconImage,
+            username: message.author.displayName,
+            avatar_url: message.author.iconImage,
           }),
         })
       }
+      console.log(message.contentMetadata)
 
       if (message.contentType === "STICKER" && stampMetadata) {
-        send(`https://stickershop.line-scdn.net/stickershop/v1/sticker/${stampMetadata}/android/sticker.png`)
-      }else if ((message.contentType === "IMAGE" || message.contentType === "VIDEO") && message.data) {
-        const obsDataUrl = line_obs.getDataUrl(message.squareMessage.message.id)
+        await send(`https://stickershop.line-scdn.net/stickershop/v1/sticker/${stampMetadata}/android/${message.contentMetadata["STKOPT"] === "A" ? "sticker_animation.png" : "sticker.png"}`)
+      }else if ((message.contentType === "IMAGE" || message.contentType === "VIDEO" || message.contentType === "FILE") && message.data) {
+        const obsData = await line_client.getMessageObsData(message.squareMessage.message.id);
 
-        if (obsDataUrl) {
-          send(obsDataUrl);
-        }
-      }else if (message.contentType === "FILE" && message.data) {
-        const obsDataUrl = line_obs.getDataUrl(message.squareMessage.message.id)
+        const response = await fetch("https://storage.evex.land/upload?filename=" + encodeURIComponent(message.contentMetadata["FILE_NAME"] || `image.${JSON.parse(message.contentMetadata["MEDIA_CONTENT_INFO"])["extension"] || "png"}`), {
+          method: "POST",
+          body: obsData,
+        })
 
-        if (obsDataUrl) {
-          send(obsDataUrl);
+        if (response.ok) {
+          const obsDataUrl = (await response.json()).downloadKey;
+
+          if (obsDataUrl) {
+            await send(`https://storage.evex.land/download?key=${encodeURIComponent(obsDataUrl)}`);
+          }
         }
       }else if (message.content !== "") {
-        send(message.content);
+        await send(message.content.replace("@everyone", "@ everyone").replace("@here", "@ here"));
       }
     }
   })
@@ -116,11 +117,13 @@ const discord_client = new DiscordClient({
 
 const discord_target = {
   serverId: "1255359848644608035",
-  channelId: "1255362057709289493",
+  channelId: "1280752398968815728",
 };
 
 discord_client.on("ready", () => {
   console.log("[Discord] Ready");
+
+  if (discord_webhook) return;
 
   discord_client.channels.fetch(discord_target.channelId).then(async (channel) => {
     if (!channel) {
@@ -131,6 +134,8 @@ discord_client.on("ready", () => {
       discord_webhook = (await channel.createWebhook({
         name: "Linecord - Webhook"
       })).url;
+
+      line_client.storage.set("discord_webhook", discord_webhook);
     }
   })
 });
