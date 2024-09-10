@@ -1,0 +1,10 @@
+{
+  "tasks": {
+    "start": "deno run -A index.ts"
+  },
+  "imports": {
+    "@djs/client": "npm:discord.js@^14.16.1",
+    "@evex/linejs": "jsr:@evex/linejs@^1.1.1",
+    "@std/dotenv": "jsr:@std/dotenv@^0.225.2"
+  }
+}
